@@ -1,0 +1,251 @@
+\documentclass[12pt]{article}
+
+\usepackage{fullpage,graphicx,psfrag,amsmath,amsfonts,verbatim}
+\usepackage{amsthm}
+\usepackage{mathtools}
+\usepackage[small,bf]{caption}
+\usepackage{pgf}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage[normalem]{ulem}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\tiny\ttfamily,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+
+\lstset{style=mystyle}
+
+\input defs.tex
+
+\bibliographystyle{alpha}
+
+\title{Notes on Magnus Expansion for Bistable Project}
+\author{Mark Liu}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{claim}{Claim}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{case}{Case}
+
+\begin{document}
+
+
+\maketitle
+
+\section{Model}
+Let the length of the Kirchoff beam be $L$.
+An adapted frame to Kirchoff beam is given in intrinsic coordinates
+$\omega_x : [0, L] \rightarrow \reals$,
+$\omega_y : [0, L] \rightarrow \reals$,
+$\omega_z : [0, L] \rightarrow \reals$. These are curvatures about the $x,y,z$ axes,
+in the adapted frame of the beam.
+
+Define
+$$\omega(l) = \begin{bmatrix}
+                        0 & w_z(l) & -w_y(l) & 1\\
+                        w_z(l) & 0 & w_x(l) & 0\\
+                        w_y(l) & -w_x(l) & 0 & 0\\
+                0 & 0 & 0 & 0 \end{bmatrix}.$$
+So that $\omega : [0, L] \rightarrow se_3$.
+If we further assume that the $\omega_x, \omega_y, \omega_z$ to be
+each represented by a $N$-degree polynomial, then $\omega$ can be
+specified by $3 \cdot (N + 1)$ scalar parameters
+$c = (c^x_0, \ldots, c^x_N, c^y_0, \ldots c^y_N, c^z_0, c^z_N)$.
+Then write $\omega$ as $\omega^c$ to make this dependency explicit.
+
+              
+Let $T(l) \in SE_3$ be the adapted frame at arc length $l$ along the beam,
+written in world coordinates. Then $T$ satisfies the matrix differential
+equation
+$$\frac{d}{dl}T(l) = T(l) \omega^c(l)$$
+
+with boundary condition
+$$T(0) = T_0.$$
+
+\section{Magnus Expansion}
+Define $\Psi^c(t_1, t_2) = \int_{t_1}^{t_2} \omega^c(s) ds + \int_{t_1}^{t_2} [\int_{t_1}^{s'}\omega^c(s) ds, \omega^c(s')]ds'$.
+Note that $\Psi^c$ is a multinomial in $t_1, t_2, c$. This is
+the fourth order magnus expansion and we have $T(l + \epsilon) \approx T(l)\exp(\Psi^c(l, l+\epsilon))$. 
+
+The approximation gets worse as $\epsilon$ is increased, so we increase
+accuracy by taking $M$ products.
+
+
+The coordinate frame at the end of the beam $l=L$ can be approximated
+$T(L) \approx T_0 \exp(\Psi^c(0, \frac{L}{M})) \exp(\Psi^c(\frac{L}{M}, 2\frac{L}{M}))\ldots \exp(\Psi^c(\frac{M-1}{M}L, L))$.
+
+In terser notation, we have $T(L) \approx T_0 \Pi_{i=0}^{M-1} \exp(\Psi^c(i\frac{L}{M}, (i+1)\frac{L}{M}))$. We can write the right-hand side as $\hat T^c(L)$.
+
+\section{Derivatives}
+
+We consider the derivative $\frac{d}{dc} \hat T^c(L)$.
+We have
+\[
+\begin{aligned}
+  &\hat T^{c+\Delta c}(L) =  T_0 \Pi_{i=0}^{M-1} \exp(\Psi^{c+ \Delta c}_i)\\
+  &\approx T_0 \Pi_{i=0}^{M-1} \exp(\frac{d}{dc}\Psi^c_i \Delta c + \Psi^c_i)\\
+  &\approx T_0 \Pi_{i=0}^{M-1} \exp[J_l(\Psi^c_i) \frac{d}{dc}\Psi^c_i \Delta c)] \exp(\Psi^c_i)\\
+  &\approx T_0 \Pi_{i=0}^{M-1} [I + J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \Delta c)] \exp(\Psi^c_i)\\
+  &\approx \hat T^{c}(L) + T_0\sum_{i=0}^{M-1}\left[\Pi_{j=0}^{i-1} \exp(\Psi^c_j)\right]  \left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \Delta c\right] \left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]\\
+  &\approx \hat T^{c}(L) + T_0\sum_{i=0}^{M-1}\left[\Pi_{j=0}^{i-1} \exp(\Psi^c_j)\right]   \left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right] \Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \Delta c\right]\\
+  &\approx \hat T^{c}(L) + \hat T^{c}(L) \sum_{i=0}^{M-1}\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \Delta c\right]\\  \end{aligned}
+\]
+
+Equivalently, the linear map $\reals^N \rightarrow \reals^6$ taking a change of parameters to a body twist of the tail frame is 
+$$\sum_{i=0}^{M-1}\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \right]$$
+
+We now consider what the second derivative of this $6 \times N$ matrix is, with respect to a single parameter $c_k$, $k \in 1 \ldots N$.
+
+First we create a recursive procedure for computing the matrices $f_m(i) := \frac{d}{dc_m}\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}$.
+\[
+  \begin{aligned}
+    &f_m(i) = \frac{d}{dc_m}\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}} \\
+    &= \frac{d}{dc_m}\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}} \\
+    &= \frac{d}{dc_m}\Ad_{\left  [\Pi_{j=i+1}^{M-1} \exp(\Psi^c_j)\right]^{-1} \exp(\Psi^c_{i})^{-1}} \\
+    &= \frac{d}{dc_m}\left(\Ad_{\left  [\Pi_{j=i+1}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\Ad_{ \exp(\Psi^c_{i})^{-1}} \right)\\
+    &= \left(\frac{d}{dc_m}\Ad_{\left  [\Pi_{j=i+1}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\right)\Ad_{ \exp(\Psi^c_{i})^{-1}} + \Ad_{\left  [\Pi_{j=i+1}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left(\frac{d}{dc_m}\Ad_{ \exp(\Psi^c_{i})^{-1}}\right) \\
+    &= f_m(i+1) \Ad_{ \exp(\Psi^c_{i})^{-1}} + \Ad_{\left  [\Pi_{j=i+1}^{M-1} \exp(\Psi^c_j)\right]^{-1}} \left(\frac{d}{dc_m}\Ad_{ \exp(\Psi^c_{i})^{-1}}\right) 
+  \end{aligned}
+\]
+
+And we have the base case $f_m(M-1) = \Ad_{ \exp(\Psi^c_{M-1})^{-1}}$.
+
+Then
+\[
+  \begin{aligned}
+    \sum_{i=0}^{M-1} \frac{d}{dc_m}\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}} = \sum_{i=0}^{M-1} f_m(i)\\
+  \end{aligned}
+\]
+
+So now we can compute
+
+\[
+  \begin{aligned}
+    &\frac{d}{dc_m}\left(\sum_{i=0}^{M-1}\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \right]\right) \\
+    &= \sum_{i=0}^{M-1}\frac{d}{dc_m}\left(\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \right]\right) \\
+    &= \sum_{i=0}^{M-1}\frac{d}{dc_m}\left(\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\right)\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \right] \\
+    &+  \Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\frac{d}{dc_m}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \right]\\
+    &= \sum_{i=0}^{M-1}f_m(i)\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \right] \\
+    &+  \Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\frac{d}{dc_m}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \right]\\
+  \end{aligned}
+\]
+
+
+
+We now evalute the expression $\frac{d}{dc_m}\Ad_{\exp(-\Psi^c_j)}$. This is the limit
+\[
+\begin{aligned}
+  &\lim_{t \rightarrow 0}\frac{\Ad_{\exp(-\Psi^c_j - t \frac{d}{dc_m}\Psi^c_j)} - \Ad_{\exp(-\Psi^c_j)} }{ t } \\
+  &= \lim_{t \rightarrow 0}\frac{\Ad_{\exp(J_l[-\Psi^c_j](-t\frac{d}{dc_m}\Psi^c_j))\exp(-\Psi^c_j)} - \Ad_{\exp(-\Psi^c_j)} }{ t } \\
+  &= \lim_{t \rightarrow 0}\frac{\Ad_{\exp(-t J_l[-\Psi^c_j]\frac{d}{dc_m}\Psi^c_j)}\Ad_{\exp(-\Psi^c_j)} - \Ad_{\exp(-\Psi^c_j)} }{ t } \\
+  &= \lim_{t \rightarrow 0}\frac{\left(\Ad_{\exp(-t J_l[-\Psi^c_j]\frac{d}{dc_m}\Psi^c_j)} - I\right)\Ad_{\exp(-\Psi^c_j)}  }{ t } \\
+  &= \lim_{t \rightarrow 0}\frac{\left(\Ad_{\exp(-t J_l[-\Psi^c_j]\frac{d}{dc_m}\Psi^c_j)} - I\right)}{t}\Ad_{\exp(-\Psi^c_j)} \\
+  &= d\Ad(- J_l[-\Psi^c_j]\frac{d}{dc_m}\Psi^c_j)\Ad_{\exp(-\Psi^c_j)} \\
+  &= -d\Ad(J_l[-\Psi^c_j]\frac{d}{dc_m}\Psi^c_j)\Ad_{\exp(-\Psi^c_j)} \\
+\end{aligned}
+\]
+
+Now we evaluate $\frac{d}{dc_m}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \right]$.
+\[
+  \begin{aligned}
+    \frac{d}{dc_m}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \right] = \left(\frac{d}{dc_m}J_l(\Psi^c_i)\right)\frac{d}{dc}\Psi^c_i + J_l(\Psi^c_i)\underbrace{\frac{d}{dc_m}\frac{d}{dc}\Psi^c_i}_0 \\
+  \end{aligned}
+\]
+
+And now we evaluate the term $\frac{d}{dc_m}J_l(\Psi^c_k)$.
+\[
+  \begin{aligned}
+    &\frac{d}{dc_m} J_l(\Psi^c_k) = \frac{d}{dc_m} J_l(\Psi^c_k)_{ij} e_i e_j^T \\
+    &= \nabla J_l(\Psi^c_k)_{ij} \frac{d}{d c_m} \Psi^c_k e_i e_j^T \\
+  \end{aligned}
+\]
+
+This is a matrix whose $ij$ entry is $\nabla J_l(\Psi^c_k)_{ij} \frac{d}{d c_m} \Psi^c_k$.
+
+
+Then what we end up with is a $6 \times N$ matrix $F^c$ which encodes the body jacobian of the Magnus expansion,
+and a $6 \times N \times N$ tensor $G^c$ which is the second order correction.
+
+The body twist resulting from perturbation $\Delta c$ is then $F^c \Delta c + \frac{1}{2}  G^c(\cdot, \Delta c, \Delta c)$.
+We have $T^{c + \Delta c} - T^c = T^c \cdot \left[F^c \Delta c + \frac{1}{2}  G^c(\cdot, \Delta c, \Delta c)\right]$.
+Now let $L$ be a linear operator operating on the vector space of $4 \times 4$ matrices. Then with $[\cdot]$ the operator
+that brings a $6 \times 1$ vector to a $4 \times 4$ matrix (se3 vector to matrix representation),
+\[
+\begin{aligned}
+  &L T^{c + \Delta c} - L T^c = L\left(T^c  \left[F^c_k \Delta c + \frac{1}{2}  G^c(\cdot, \Delta c, \Delta c)\right]\right)\\
+  &= L\left(T^c  \left[F^c_{ki} \Delta c_i e_k + \frac{1}{2}  G^c_{kij}\Delta c_i \Delta c_j e_k\right]\right)\\
+  &= L\left(T^c  \left[(F^c_{ki} \Delta c_i  + \frac{1}{2}  G^c_{kij}\Delta c_i \Delta c_j) e_k\right]\right)\\
+  &= (F^c_{ki} \Delta c_i  + \frac{1}{2}  G^c_{kij}\Delta c_i \Delta c_j) L\left(T^c [e_k]\right)\\
+  &= F^c_{ki} \Delta c_i L\left(T^c [e_k]\right)  + \frac{1}{2}  G^c_{kij}\Delta c_iL\left(T^c [e_k]\right) \Delta c_j \\
+  &=  L\left(T^c [F^c_{ki} e_k]\right)\Delta c_i  + \frac{1}{2}  \Delta c_iL\left(T^c [G^c_{kij} e_k]\right) \Delta c_j \\
+  \end{aligned}
+\]
+
+We recognize the gradient $\left( L(T^c[F^c_{k,1} e_k]), \ldots, L(T^c[F^c_{k,n} e_k]) \right) = \left( L(T^c[F^c e_1]), \ldots, L(T^c[F^c e_n]) \right)$ and hessian $H_{i,j} = L\left(T^c[G_{kij}e_k]\right) = L\left(T^c[G(\cdot, e_i, e_j)]\right)$. 
+
+We can also consider the derivative of the final position with respect to a spin of the original frame. So let $W$ be a constant twist $\in se_3$.
+\[
+\begin{aligned}
+  &T_{\theta + \Delta \theta} = T_0 \exp((\theta + \Delta \theta) W) T(L) \\
+  & = T_0 \exp(\theta W) \exp(\Delta \theta W) T(L) \\
+  & \approx T_0 \exp(\theta W)(I + \Delta \theta W) T(L) \\
+  & \approx T_0 \exp(\theta W) T(L) + T_0 \exp(\theta W) \Delta \theta W T(L) \\
+  & \approx T_\theta + T_0 \exp(\theta W) \Delta \theta W T(L) \\
+  & \approx T_\theta + T_0 \exp(\theta W) T(L) \Ad_{T(L)^{-1}} \Delta \theta W \\
+  & \approx T_\theta + T_\theta \Ad_{T(L)^{-1}} \Delta \theta W \\
+\end{aligned}
+\]
+
+$$ \frac{d}{d\theta} T = T_\theta \Ad_{T(L)^{-1}} W$$
+
+\section{Equilibrium}
+Suppose we impose displacement boundary conditions $g(T(L)) = 0$
+for some vector function $g$. For our purposes, $g$ will be linear
+in the coordinates of the matrix $T(L)$.
+
+Given parameters $\alpha_x, \alpha_y, \alpha_z > 0$, we form the
+energy functional $E^c = \int_0^L \alpha_x (w_x^{c}(l))^2 + \alpha_y (w_y^c(l))^2 + \alpha_z (w_z^{c}(l))^2 dl$.
+
+The expression $E^c$ is a quadratic in the parameters $c$. At static equilibrium,
+we have $c^* = \argmin_c E^c$ subject to $g(T(L)) = 0$. We approximate the static equilibrium as $\argmin_c E^c$ subject to $g(\hat T^c(L)) = 0.$
+
+Given a current guess $\hat c$, we can linearize the constraint as
+$g( \hat T^{\hat c+\Delta c}(L)) \approx g( \frac{d}{dc} \hat T^{c}(L)|_{\hat c}) \Delta c + g( \hat T^{\hat c}(L))$. We achieve a linear constraint in $\Delta c$ and a convex optimization substep.
+
+$\argmin_{\Delta c} E^{\hat c + \Delta c}$ subject to $g( \frac{d}{dc} \hat T^{c}(L)|_{\hat c}) \Delta c = -g( \hat T^{\hat c}(L))$.
+
+This is a convex objective with a nonconvex, but differentiable constraint.
+
+We can make the function $L(c, \nu) =  E^c + \nu \cdot g(\hat T^c(L))$, whence we obtain the dual function $h(\nu) = \inf_c L(c, \nu)$.
+
+
+
+
+
+
+
+                    
+                      
+
+\end{document}
