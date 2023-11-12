@@ -109,7 +109,20 @@ We have
   &\approx T_0 \Pi_{i=0}^{M-1} [I + J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \Delta c)] \exp(\Psi^c_i)\\
   &\approx \hat T^{c}(L) + T_0\sum_{i=0}^{M-1}\left[\Pi_{j=0}^{i-1} \exp(\Psi^c_j)\right]  \left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \Delta c\right] \left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]\\
   &\approx \hat T^{c}(L) + T_0\sum_{i=0}^{M-1}\left[\Pi_{j=0}^{i-1} \exp(\Psi^c_j)\right]   \left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right] \Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \Delta c\right]\\
-  &\approx \hat T^{c}(L) + \hat T^{c}(L) \sum_{i=0}^{M-1}\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \Delta c\right]\\  \end{aligned}
+  &\approx \hat T^{c}(L) + \hat T^{c}(L) \sum_{i=0}^{M-1}\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \Delta c\right]\\ 
+\end{aligned}
+\]
+
+$$T^{c + \Delta c} - T^c  \approx  \hat T^{c}(L) \sum_{i=0}^{M-1}\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \Delta c\right]$$
+
+\[
+  \begin{aligned}
+    &\frac{d}{dc_m} (\hat T^{c}(L) \sum_{i=0}^{M-1}\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \Delta c\right]) \\
+    &=\frac{d}{dc_m} \hat T^{c}(L) \sum_{i=0}^{M-1}\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \Delta c\right]) \\
+    &+  \hat T^{c}(L) \sum_{i=0}^{M-1}\frac{d}{dc_m} \Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \Delta c\right])\\
+    &=\left[\hat T^{c}(L) \sum_{i=0}^{M-1}\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left[J_l(\Psi^c_i)\frac{d}{dc_m}\Psi^c_i\right]\right] \sum_{i=0}^{M-1}\Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \Delta c\right]) \\
+    &+  \hat T^{c}(L) \sum_{i=0}^{M-1}\frac{d}{dc_m} \Ad_{\left[\Pi_{j=i}^{M-1} \exp(\Psi^c_j)\right]^{-1}}\left[J_l(\Psi^c_i)\frac{d}{dc}\Psi^c_i \Delta c\right])    
+  \end{aligned}
 \]
 
 Equivalently, the linear map $\reals^N \rightarrow \reals^6$ taking a change of parameters to a body twist of the tail frame is 
@@ -230,15 +243,30 @@ energy functional $E^c = \int_0^L \alpha_x (w_x^{c}(l))^2 + \alpha_y (w_y^c(l))^
 The expression $E^c$ is a quadratic in the parameters $c$. At static equilibrium,
 we have $c^* = \argmin_c E^c$ subject to $g(T(L)) = 0$. We approximate the static equilibrium as $\argmin_c E^c$ subject to $g(\hat T^c(L)) = 0.$
 
-Given a current guess $\hat c$, we can linearize the constraint as
-$g( \hat T^{\hat c+\Delta c}(L)) \approx g( \frac{d}{dc} \hat T^{c}(L)|_{\hat c}) \Delta c + g( \hat T^{\hat c}(L))$. We achieve a linear constraint in $\Delta c$ and a convex optimization substep.
+If there are $n$ constraints $g_1, \ldots g_n$, at equilibrium configuration $c$ we will have $\ker(Jg|_c) \subset \ker(\nabla E)$ and $g(c) = 0$, where $Jg|_c$ is the jacobian of $g$ evaluated at $c$. In other words, the constraint $g$ is satisfied and any local movement in the constraint manifold $\delta c \in \ker Jg|_c$ does not change the energy. Equivalently, there exists  $\lambda_1, \ldots \lambda_n$ such that
+$\nabla E(c) + \lambda_1 \nabla g_1(c) + \ldots \lambda_n \nabla g_n(c) = 0$. Now we can imagine the constraint itself depends on a parameter $\theta$ (the actuation angle in the bistable project) and write $g(\theta, c) = g_\theta(c)$.
 
-$\argmin_{\Delta c} E^{\hat c + \Delta c}$ subject to $g( \frac{d}{dc} \hat T^{c}(L)|_{\hat c}) \Delta c = -g( \hat T^{\hat c}(L))$.
+Then define $F(c, \lambda, \theta) = \begin{bmatrix}  g(\theta, c) \\ Jg_\theta|_c^T \lambda + \nabla E^T(c)\end{bmatrix}$
+Any solution $F(c^*, \lambda^*, \theta^*) = 0$ defines an equilibrium condition. Moreover, by the implicit function theorem,
+if $[\frac{\partial F}{\partial c}, \frac{\partial F}{\partial \lambda}]$ is invertible, then we have a local one dimensional
+manifold parameterized by $\theta$. The manifold ceases to exist when invertibility fails. This suggests investigating the rank
+of the aforementioned matrix.
 
-This is a convex objective with a nonconvex, but differentiable constraint.
-
-We can make the function $L(c, \nu) =  E^c + \nu \cdot g(\hat T^c(L))$, whence we obtain the dual function $h(\nu) = \inf_c L(c, \nu)$.
-
+Expanded, we can write this matrix as \[
+  \begin{aligned}
+    &\begin{bmatrix}  \frac{d}{dc} g(\theta, c) & \frac{d}{d\lambda} g(\theta, c) \\
+       \frac{d}{dc} [Jg_\theta|_c^T \lambda + \nabla E^T(c)] & \frac{d}{d\lambda}[Jg_\theta|_c^T \lambda + \nabla E^T(c)]\end{bmatrix} = \\
+    &\begin{bmatrix}
+       Jg & 0 \\
+       \frac{d}{dc} [Jg_\theta|_c^T \lambda + \nabla E^T(c)] & Jg_\theta|_c^T\end{bmatrix} = \\
+    &\begin{bmatrix}
+       Jg & 0 \\
+       \frac{d}{dc} [\lambda_1 \nabla g^T_{1 \theta} + \ldots +  \lambda_n \nabla g^T_{n \theta}]  +  H_E & Jg_\theta|_c^T\end{bmatrix} = \\    
+    &\begin{bmatrix}
+       Jg_\theta & 0 \\
+       \lambda_1  H_{g_{1 \theta}} + \ldots +  \lambda_n H_{ g_{n \theta}}  +  H_E & Jg_\theta^T\end{bmatrix}
+  \end{aligned}
+\]
 
 
 

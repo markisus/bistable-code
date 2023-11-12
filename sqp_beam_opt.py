@@ -1,12 +1,12 @@
 from matplotlib import pyplot as plt
 import numpy as np
-import cvxpy as cp
+# import cvxpy as cp
 import scipy as sp
-import open3d as o3d
+# import open3d as o3d
 import time
-# from magnus_utils_small import *
+from magnus_utils_small import *
 # from magnus_utils_tiny import *
-from magnus_utils import *
+# from magnus_utils import *
 from geometry import *
 import functools
 
@@ -175,6 +175,205 @@ def subdivide_frames(magnus_segments, length, initial_frame, qs, delta_l):
 
         current_l = next_l
 
+def F(magnus_segments, length, alpha_x, alpha_y, alpha_z, initial_frame, theta, qs, lambd):
+    psis, dpsi_dqs = get_psi_segments(length, qs, magnus_segments)
+    endpoint, dendpoint_dq, d2endpoint_dq2 = get_endpoint(psis, dpsi_dqs, compute_hess = True)
+
+    eps = 1e-6
+    dqs = np.random.uniform(-1, 1, 3*POLY_ORDER)
+    psis_plus, dpsi_dqs_plus = get_psi_segments(length, qs + dqs*eps, magnus_segments)
+    endpoint_plus, dendpoint_dq_plus = get_endpoint(psis_plus, dpsi_dqs_plus, compute_hess = False)
+
+    # # ##### SANITY
+
+    # def get(dqs):
+    #     psis, dpsi_dqs = get_psi_segments(length, qs + dqs, magnus_segments)
+    #     endpoint, dendpoint_dq = get_endpoint(psis, dpsi_dqs, compute_hess = False)
+    #     return endpoint, dendpoint_dq
+
+    # # psis_plus, dpsi_dqs_plus = get_psi_segments(length, qs + dqs*eps, magnus_segments)
+    # # psis_plus_half, dpsi_dqs_plus_half = get_psi_segments(length, qs + dqs*eps/2, magnus_segments)
+    # # psis_minus, dpsi_dqs_minus = get_psi_segments(length, qs - dqs*eps, magnus_segments)
+    # # psis_minus_half, dpsi_dqs_minus_half = get_psi_segments(length, qs - dqs*eps/2, magnus_segments)
+
+    # endpoint, dendpoint_dq = get(dqs*0)
+    # endpoint_plus, dendpoint_dq_plus = get(dqs*eps)
+    # endpoint_minus, dendpoint_dq_minus = get(-dqs*eps)
+    
+    # # analytic first derivatives, numeric second derivatives
+    # dendpoint_dt_plus = endpoint_plus@se3_to_matrix(dendpoint_dq_plus@dqs.reshape((-1,1)))
+    # dendpoint_dt = endpoint@se3_to_matrix(dendpoint_dq@dqs.reshape((-1,1)))
+    # d2endpoint_dt2_n = (dendpoint_dt_plus - dendpoint_dt)/eps
+    # print("d2endpoint_dt2_n", d2endpoint_dt2_n)
+
+    # # central difference
+    # d2endpoint_dt2_cd = (endpoint_plus - 2*endpoint + endpoint_minus)/eps**2
+    # print("d2endpoint_dt2_cd", d2endpoint_dt2_cd)
+
+    # analytic second derivative
+    # T'         =   T @ M L dq
+    # T''        =   T'@ M L dq + T @ d/dt[M L dq]
+    # print("dendpoint_dq shape", dendpoint_dq.shape)
+    # print("d2endpoint_dq2 shape", d2endpoint_dq2.shape)
+    # print("dendpoint_dq(t)", dendpoint_dq)
+
+    # print("dendpoint_dq'(t) numeric", (dendpoint_dq_plus - dendpoint_dq)/eps)
+    # print("dendpoint_dq'(t) analytic", np.einsum("ijk,k", d2endpoint_dq2, dqs))
+
+    # d__dendpoint_dq__t = np.einsum("ijk,k", d2endpoint_dq2, dqs) @ dqs.reshape((-1,1))
+    # d__dendpoint_dq__t_n = (dendpoint_dq_plus@dqs.reshape((-1,1)) - dendpoint_dq@dqs.reshape((-1,1)))/eps
+    # print("d__dendpoint_dq__t", d__dendpoint_dq__t)
+    # print("d__dendpoint_dq__t_n", d__dendpoint_dq__t_n)
+    # Tprime = endpoint@se3_to_matrix(dendpoint_dq@dqs.reshape((-1,1)))
+
+    # Tprimeprime = endpoint@(se3_to_matrix(dendpoint_dq@dqs.reshape((-1,1))) @ se3_to_matrix(dendpoint_dq@dqs.reshape((-1,1))) + \
+    #                         se3_to_matrix(np.einsum("ijk,k", d2endpoint_dq2, dqs) @ dqs.reshape((-1,1))))
+
+
+    K = get_energy_matrix(length)
+
+    angle = np.pi/8
+    c = np.cos(angle)
+    s = np.sin(angle)
+    base_frame = np.array([
+        c, -s, 0, 0,
+        s, c, 0, 0.1,
+        0, 0, 1, 0,
+        0, 0, 0, 1]).reshape((4,4), order='C')
+    rotator = se3_exp(np.array([theta, 0, 0, 0, 0, 0]).reshape((-1,1)))
+
+    initial_frame = base_frame @ rotator
+    T = initial_frame @ endpoint
+    T_plus = initial_frame @ endpoint_plus
+
+    dT_dq = np.zeros((4,4,3*POLY_ORDER))
+    for k in range(3*POLY_ORDER):
+        dT_dq[:,:,k] = T @ se3_to_matrix(dendpoint_dq[:,k])
+
+    dT_dq_plus = np.zeros((4,4,3*POLY_ORDER))
+    for k in range(3*POLY_ORDER):
+        dT_dq_plus[:,:,k] = T_plus @ se3_to_matrix(dendpoint_dq_plus[:,k])
+
+    # print("SANITY")
+    # print("dendpoint_dt n", (endpoint_plus - endpoint)/eps)
+    # print("dendpoint_dt a", endpoint @ se3_to_matrix(dendpoint_dq @ dqs))
+    # print("dT_dt n", initial_frame @ (endpoint_plus - endpoint)/eps)
+    # print("dT_dt n alt", (T_plus - T)/eps)
+    # print("dT_dt a", T @ se3_to_matrix(dendpoint_dq @ dqs))
+    # print("dT_dt alt", np.einsum("ijk,k", dT_dq, dqs))
+
+    d2T_dq2 = np.zeros((4,4,3*POLY_ORDER,3*POLY_ORDER))
+    for k1 in range(3*POLY_ORDER):
+        for k2 in range(3*POLY_ORDER):
+            d2T_dq2[:,:,k1,k2] = T @ (
+                se3_to_matrix(dendpoint_dq[:,k2].reshape((-1,1))) @ se3_to_matrix(dendpoint_dq[:,k1].reshape((-1,1))) + \
+                se3_to_matrix(d2endpoint_dq2[:,k2,k1].reshape((-1,1))))
+
+    dT_dt_plus = dT_dq_plus @ dqs
+    # print("dT_dt_plus", dT_dt_plus)
+    dT_dt = dT_dq @ dqs
+    # print("d2T_dt2 n", (dT_dt_plus - dT_dt)/eps)
+    # print("d2T_dt2 a", (d2T_dq2 @ dqs) @ dqs)
+
+    # SE3_times_endpoint = SE3_times(endpoint)
+    # dendpoint_dq = SE3_times_endpoint @ dtwistendpoint_dq
+    # d2endpoint_dq2 = np.einsum("ij, jkl", SE3_times_endpoint, d2twistendpoint_dq2)
+
+    roll = T[1,2]
+    height = T[1,3]
+
+    roll_plus = T_plus[1,2]
+    height_plus = T_plus[1,3]
+
+    droll_dq = dT_dq[1,2,:]
+    dheight_dq = dT_dq[1,3,:]
+
+    droll_dq_plus = dT_dq_plus[1,2,:]
+    dheight_dq_plus = dT_dq_plus[1,3,:]
+
+    # print("droll_dt a", droll_dq @ dqs)
+    # print("dheight_dt a", dheight_dq @ dqs)
+    # print("droll_dt n", (T_plus[1,2] - roll)/eps)
+    # print("dheight_dt n", (T_plus[1,3] - height)/eps)
+
+    d2roll_dq2 = d2T_dq2[1,2,:,:]
+    d2height_dq2 = d2T_dq2[1,3,:,:]
+    # print("d2height_dq2", d2height_dq2)
+
+    # print("droll_dt_plus", droll_dq_plus @ dqs)
+    # print("dheight_dt_plus", dheight_dq_plus @ dqs)
+
+    # print("d2roll_dt2 n", (droll_dq_plus @ dqs - droll_dq @ dqs)/eps)
+    # print("d2roll_dt2 a", (d2roll_dq2 @ dqs) @ dqs)
+    # print("d2height_dt2 n", (dheight_dq_plus @ dqs - dheight_dq @ dqs)/eps)
+    # print("d2height_dt2 a", (d2height_dq2 @ dqs) @ dqs)
+
+    qxs = qs[:POLY_ORDER].reshape((-1,1))
+    qys = qs[POLY_ORDER:2*POLY_ORDER].reshape((-1,1))
+    qzs = qs[-POLY_ORDER:].reshape((-1,1))
+
+    dqxs = dqs[:POLY_ORDER].reshape((-1,1))
+    dqys = dqs[POLY_ORDER:2*POLY_ORDER].reshape((-1,1))
+    dqzs = dqs[-POLY_ORDER:].reshape((-1,1))
+
+    objective = alpha_x * qxs.T @ K @ qxs + \
+        alpha_y * qys.T @ K @ qys  + \
+        alpha_z * qzs.T @ K @ qzs
+
+    objective_plus = alpha_x * (qxs + eps*dqxs).T @ K @ (qxs + eps*dqxs) + \
+        alpha_y * (qys + eps*dqys).T @ K @ (qys + eps*dqys)  + \
+        alpha_z * (qzs + eps*dqzs).T @ K @ (qzs + eps*dqzs)
+
+    objective = objective.item()
+    objective_plus = objective_plus.item()
+
+    dE_dqxs = 2*(alpha_x * qxs.T @ K).flatten()
+    dE_dqys = 2*(alpha_y * qys.T @ K).flatten() 
+    dE_dqzs = 2*(alpha_z * qzs.T @ K).flatten() 
+    dE_dqs = np.concatenate((dE_dqxs, dE_dqys, dE_dqzs))
+
+    
+
+    print("dE_dt numeric", (objective_plus - objective)/eps)
+    print("dE_dt a", dE_dqs @ dqs)
+
+    dE_dqxs_plus = 2*(alpha_x * (qxs+ dqxs*eps).T @ K).flatten()
+    dE_dqys_plus = 2*(alpha_y * (qys+ dqys*eps).T @ K).flatten() 
+    dE_dqzs_plus = 2*(alpha_z * (qzs+ dqzs*eps).T @ K).flatten() 
+    dE_dqs_plus = np.concatenate((dE_dqxs_plus, dE_dqys_plus, dE_dqzs_plus))
+
+    print("d2E_dt2 n", (dE_dqs_plus @ dqs - dE_dqs @ dqs)/eps)
+
+
+    objective_hess = np.zeros((3*POLY_ORDER, 3*POLY_ORDER))
+    objective_hess[:POLY_ORDER,:POLY_ORDER] = 2*alpha_x*K
+    objective_hess[POLY_ORDER:2*POLY_ORDER,POLY_ORDER:2*POLY_ORDER] = 2*alpha_y*K
+    objective_hess[-POLY_ORDER:,-POLY_ORDER:] = 2*alpha_z*K
+
+    print("d2E_dt2 a", (objective_hess @ dqs) @ dqs)
+
+    G = np.zeros((2 + 3*POLY_ORDER))
+    G[0] = roll
+    G[1] = height
+    G[2:] = dE_dqs + droll_dq*lambd[0] + dheight_dq*lambd[1]
+
+    G_plus = np.zeros((2 + 3*POLY_ORDER))
+    G_plus[0] = roll_plus
+    G_plus[1] = height_plus
+    G_plus[2:] = dE_dqs_plus + droll_dq_plus*lambd[0] + dheight_dq_plus*lambd[1]
+
+    print("dG_dt n", (G_plus - G)/eps)
+
+    H = np.zeros((2 + 3*POLY_ORDER, 2 + 3*POLY_ORDER))
+    H[0, :3*POLY_ORDER] = droll_dq
+    H[1, :3*POLY_ORDER] = dheight_dq
+    H[2:, -2] = droll_dq.T
+    H[2:, -1] = dheight_dq.T
+    H[2:,:-2] = objective_hess + d2roll_dq2 * lambd[0] + d2height_dq2 * lambd[1]
+
+    print("dG_dt a", (H @ np.concatenate((dqs, [0,0]))))
+    return G, H
+
 def make_beam_problem(magnus_segments, length, alpha_x, alpha_y, alpha_z, initial_frame):
     K = get_energy_matrix(length)
     initial_frame = initial_frame.copy()
@@ -284,292 +483,243 @@ def solve_beam_problem(beam_problem, initial_guess):
 
 
 if __name__ == "__main__":
-    np.random.seed(0)
-
-    
+    np.random.seed(3)
+    np.set_printoptions(precision=8, suppress=False)
     
     length = 0.34
-    soln = np.zeros(POLY_ORDER*3)
+    # soln = np.zeros(POLY_ORDER*3)
+    qs = np.random.uniform(-1, 1, POLY_ORDER*3) 
+    dqs = np.random.uniform(-1, 1, POLY_ORDER*3) 
 
-    beam_problem = make_beam_problem(MAGNUS_SEGMENTS, length, alpha_x, alpha_y, alpha_z, initial_frame)
-    print("SVD")
-    U, S, V = sp.linalg.svd(beam_problem['objective_hess']())
-    print("S", S)
-    print("U", U.shape)
-    print("V", V.shape)
-    # print("absmax", np.max(np.abs(U.T - V)))
+    lambd = np.random.uniform(-1, 1, 2) 
+    dlambd = np.random.uniform(-1, 1, 2) * 0
 
-    soln[POLY_ORDER*2-1] = -1 # curving into +z axis
+    theta = 0.0
+    eps = 1e-6
 
-    solns = []
+    G, H = F(MAGNUS_SEGMENTS, length, alpha_x, alpha_y, alpha_z, initial_frame, theta, qs, lambd)
+    G_plus, _ = F(MAGNUS_SEGMENTS, length, alpha_x, alpha_y, alpha_z, initial_frame, theta, qs + eps*dqs, lambd + eps*dlambd)
 
-    # thetas = np.concatenate([np.deg2rad(np.array([60, 30, 0, -30, -34])), np.linspace(np.deg2rad(-35), np.deg2rad(-50), 30)])
-    thetas = np.concatenate([np.deg2rad(np.array([60, 30, 0, -25])), np.linspace(np.deg2rad(-26), np.deg2rad(-40), 30)])
+    print("G", G)
+    print("G_plus", G_plus)
+    print("dG/dt n", (G_plus - G)/eps)
 
-    dE_dthetas = []
-    dE_dthetas_numeric = []
-    Es = []
+    daux = np.concatenate((dqs, dlambd)).reshape(-1,1)
+    dG_dt = H @ daux
+    print("dG/dt a", dG_dt.flatten())
+    print("H", H)
 
-    last_E = None
-    last_theta = None
-    dg_dthetas = []
-    lams = []
-    singular_values = []
 
-    for theta in thetas:
-        print("Theta = ", np.rad2deg(theta), " deg")
-        rotator = se3_exp(np.array([theta, 0, 0, 0, 0, 0]).reshape((-1,1)))
-        beam_problem = make_beam_problem(MAGNUS_SEGMENTS, length, alpha_x, alpha_y, alpha_z, initial_frame @ rotator)
-        start = time.monotonic()
-        result = solve_beam_problem(beam_problem, soln)
-        if not result.success:
-            raise RuntimeError("Uh Oh!")
-        end = time.monotonic()
-        print("Optimization time", end-start)
-        print(result)
-        soln = result.x
-        print(soln)
-        print("Final constrant", beam_problem['constraint'](soln))
+    # beam_problem = make_beam_problem(MAGNUS_SEGMENTS, length, alpha_x, alpha_y, alpha_z, initial_frame)
+    # print("SVD")
+    # U, S, V = sp.linalg.svd(beam_problem['objective_hess']())
+    # print("S", S)
+    # print("U", U.shape)
+    # print("V", V.shape)
+    # # print("absmax", np.max(np.abs(U.T - V)))
 
-        dg_dw = beam_problem['constraint_jac'](soln)
-        _, dE_dw = beam_problem['objective'](soln)
-        dg_dtheta = beam_problem['dconstraint_dtheta'](soln)
-        dg_dthetas.append(dg_dtheta.flatten())
+    # soln[POLY_ORDER*2-1] = -1 # curving into +z axis
 
-        lam = sp.linalg.solve(dg_dw @ dg_dw.T, dg_dw @ dE_dw.T)
-        lams.append(lam.flatten())
+    # solns = []
 
-        dE_dtheta = (-lam.T @ dg_dtheta).item() * -1 # minus 1 because we are going backwards
-        dE_dthetas.append(dE_dtheta)
-        print("dg_dtheta", dg_dtheta.flatten())
-        print("dE_dtheta", dE_dtheta)
+    # # thetas = np.concatenate([np.deg2rad(np.array([60, 30, 0, -30, -34])), np.linspace(np.deg2rad(-35), np.deg2rad(-50), 30)])
+    # thetas = np.concatenate([np.deg2rad(np.array([60, 30, 0, -25])), np.linspace(np.deg2rad(-26), np.deg2rad(-40), 30)])
 
-        P = np.empty((3*POLY_ORDER, 3))
-        P[:,0] = dE_dw
-        P[:,1:] = dg_dw.T
+    # dE_dthetas = []
+    # dE_dthetas_numeric = []
+    # Es = []
 
-        U, S, V = sp.linalg.svd(P)
-        singular_values.append(S)
-        # print("P", P)
-        # print("dE_dw", dE_dw)
-        # print("dg_dw", dg_dw)
+    # last_E = None
+    # last_theta = None
+    # dg_dthetas = []
+    # lams = []
+    # singular_values = []
 
-        E = result.fun
-        Es.append(E)
+    # for theta in thetas:
+    #     print("Theta = ", np.rad2deg(theta), " deg")
+    #     rotator = se3_exp(np.array([theta, 0, 0, 0, 0, 0]).reshape((-1,1)))
+    #     beam_problem = make_beam_problem(MAGNUS_SEGMENTS, length, alpha_x, alpha_y, alpha_z, initial_frame @ rotator)
+    #     start = time.monotonic()
+    #     result = solve_beam_problem(beam_problem, soln)
+    #     if not result.success:
+    #         raise RuntimeError("Uh Oh!")
+    #     end = time.monotonic()
+    #     print("Optimization time", end-start)
+    #     print(result)
+    #     soln = result.x
+    #     print(soln)
+    #     print("Final constrant", beam_problem['constraint'](soln))
 
-        if last_E is not None:
-            # print("E", E)
-            # print("last_E", last_E)
-            dE_numeric = E - last_E
-            dE_dtheta_numeric = dE_numeric/(theta - last_theta) *-1
-            print("dE_dtheta_numeric", dE_dtheta_numeric)
-            dE_dthetas_numeric.append(dE_dtheta_numeric)
-        else:
-            # some arbitrary seed
-            dE_dthetas_numeric.append(dE_dtheta)
+    #     dg_dw = beam_problem['constraint_jac'](soln)
+    #     _, dE_dw = beam_problem['objective'](soln)
+    #     dg_dtheta = beam_problem['dconstraint_dtheta'](soln)
+    #     dg_dthetas.append(dg_dtheta.flatten())
 
-        last_E = E
-        last_theta = theta
+    #     lam = sp.linalg.solve(dg_dw @ dg_dw.T, dg_dw @ dE_dw.T)
+    #     lams.append(lam.flatten())
+
+    #     dE_dtheta = (-lam.T @ dg_dtheta).item() * -1 # minus 1 because we are going backwards
+    #     dE_dthetas.append(dE_dtheta)
+    #     print("dg_dtheta", dg_dtheta.flatten())
+    #     print("dE_dtheta", dE_dtheta)
+
+    #     P = np.empty((3*POLY_ORDER, 3))
+    #     P[:,0] = dE_dw
+    #     P[:,1:] = dg_dw.T
+
+    #     U, S, V = sp.linalg.svd(P)
+    #     singular_values.append(S)
+    #     # print("P", P)
+    #     # print("dE_dw", dE_dw)
+    #     # print("dg_dw", dg_dw)
+
+    #     E = result.fun
+    #     Es.append(E)
+
+    #     if last_E is not None:
+    #         # print("E", E)
+    #         # print("last_E", last_E)
+    #         dE_numeric = E - last_E
+    #         dE_dtheta_numeric = dE_numeric/(theta - last_theta) *-1
+    #         print("dE_dtheta_numeric", dE_dtheta_numeric)
+    #         dE_dthetas_numeric.append(dE_dtheta_numeric)
+    #     else:
+    #         # some arbitrary seed
+    #         dE_dthetas_numeric.append(dE_dtheta)
+
+    #     last_E = E
+    #     last_theta = theta
         
-        solns.append((theta, beam_problem, soln.copy()))
+    #     solns.append((theta, beam_problem, soln.copy()))
 
-    singular_values = np.log(np.array(singular_values))
-    plt.plot(np.rad2deg(thetas), singular_values[:,0])
-    plt.plot(np.rad2deg(thetas), singular_values[:,1])
-    plt.plot(np.rad2deg(thetas), singular_values[:,2])
-    plt.show()
+    # singular_values = np.log(np.array(singular_values))
+    # plt.plot(np.rad2deg(thetas), singular_values[:,0])
+    # plt.plot(np.rad2deg(thetas), singular_values[:,1])
+    # plt.plot(np.rad2deg(thetas), singular_values[:,2])
+    # plt.show()
 
-    fig, axs = plt.subplots(2)
-    i = 0
-    for _, _, soln in solns:
-        i += 1
-        ws = np.linspace(0, length, 100)
-        cs = soln
-        qx = cs[:POLY_ORDER]
-        qy = cs[POLY_ORDER:2*POLY_ORDER]
-        qz = cs[-POLY_ORDER:]
+    # fig, axs = plt.subplots(2)
+    # i = 0
+    # for _, _, soln in solns:
+    #     i += 1
+    #     ws = np.linspace(0, length, 100)
+    #     cs = soln
+    #     qx = cs[:POLY_ORDER]
+    #     qy = cs[POLY_ORDER:2*POLY_ORDER]
+    #     qz = cs[-POLY_ORDER:]
 
-        if (qy[0] > 7):
-            break
+    #     if (qy[0] > 7):
+    #         break
 
         
-        axs[0].plot(ws, sum(qx[i]*ws**i for i in range(POLY_ORDER)), '--', c='red', alpha=0.1+0.9*i/len(solns), linewidth=0.5)
-        axs[0].plot(ws, sum(qy[i]*ws**i for i in range(POLY_ORDER)), '--', c='green', alpha=0.1+0.9*i/len(solns), linewidth=0.5)
-        axs[0].plot(ws, sum(qz[i]*ws**i for i in range(POLY_ORDER)), '--', c='blue', alpha=0.1+0.9*i/len(solns), linewidth=0.5)
+    #     axs[0].plot(ws, sum(qx[i]*ws**i for i in range(POLY_ORDER)), '--', c='red', alpha=0.1+0.9*i/len(solns), linewidth=0.5)
+    #     axs[0].plot(ws, sum(qy[i]*ws**i for i in range(POLY_ORDER)), '--', c='green', alpha=0.1+0.9*i/len(solns), linewidth=0.5)
+    #     axs[0].plot(ws, sum(qz[i]*ws**i for i in range(POLY_ORDER)), '--', c='blue', alpha=0.1+0.9*i/len(solns), linewidth=0.5)
 
-        # derivatives
-        axs[1].plot(ws, sum(i*qx[i]*ws**(i-1) for i in range(1,POLY_ORDER)), '--', c='red', alpha=0.1+0.9*i/len(solns), linewidth=0.5)
-        axs[1].plot(ws, sum(i*qy[i]*ws**(i-1) for i in range(1,POLY_ORDER)), '--', c='green', alpha=0.1+0.9*i/len(solns), linewidth=0.5)
-        axs[1].plot(ws, sum(i*qz[i]*ws**(i-1) for i in range(1,POLY_ORDER)), '--', c='blue', alpha=0.1+0.9*i/len(solns), linewidth=0.5)
+    #     # derivatives
+    #     axs[1].plot(ws, sum(i*qx[i]*ws**(i-1) for i in range(1,POLY_ORDER)), '--', c='red', alpha=0.1+0.9*i/len(solns), linewidth=0.5)
+    #     axs[1].plot(ws, sum(i*qy[i]*ws**(i-1) for i in range(1,POLY_ORDER)), '--', c='green', alpha=0.1+0.9*i/len(solns), linewidth=0.5)
+    #     axs[1].plot(ws, sum(i*qz[i]*ws**(i-1) for i in range(1,POLY_ORDER)), '--', c='blue', alpha=0.1+0.9*i/len(solns), linewidth=0.5)
 
-    # plot the last convex curves
-    _, _, soln = solns[i-2]
-    ws = np.linspace(0, length, 100)
-    cs = soln
-    qx = cs[:POLY_ORDER]
-    qy = cs[POLY_ORDER:2*POLY_ORDER]
-    qz = cs[-POLY_ORDER:]
+    # # plot the last convex curves
+    # _, _, soln = solns[i-2]
+    # ws = np.linspace(0, length, 100)
+    # cs = soln
+    # qx = cs[:POLY_ORDER]
+    # qy = cs[POLY_ORDER:2*POLY_ORDER]
+    # qz = cs[-POLY_ORDER:]
 
-    axs[0].plot(ws, sum(qx[i]*ws**i for i in range(POLY_ORDER)), c='red', alpha=0.1+0.9*i/len(solns), linewidth=1.0)
-    axs[0].plot(ws, sum(qy[i]*ws**i for i in range(POLY_ORDER)), c='green', alpha=0.1+0.9*i/len(solns), linewidth=1.0)
-    axs[0].plot(ws, sum(qz[i]*ws**i for i in range(POLY_ORDER)), c='blue', alpha=0.1+0.9*i/len(solns), linewidth=1.0)
+    # axs[0].plot(ws, sum(qx[i]*ws**i for i in range(POLY_ORDER)), c='red', alpha=0.1+0.9*i/len(solns), linewidth=1.0)
+    # axs[0].plot(ws, sum(qy[i]*ws**i for i in range(POLY_ORDER)), c='green', alpha=0.1+0.9*i/len(solns), linewidth=1.0)
+    # axs[0].plot(ws, sum(qz[i]*ws**i for i in range(POLY_ORDER)), c='blue', alpha=0.1+0.9*i/len(solns), linewidth=1.0)
 
-    # derivatives
-    axs[1].plot(ws, sum(i*qx[i]*ws**(i-1) for i in range(1,POLY_ORDER)), c='red', alpha=0.1+0.9*i/len(solns), linewidth=1.0)
-    axs[1].plot(ws, sum(i*qy[i]*ws**(i-1) for i in range(1,POLY_ORDER)), c='green', alpha=0.1+0.9*i/len(solns), linewidth=1.0)
-    axs[1].plot(ws, sum(i*qz[i]*ws**(i-1) for i in range(1,POLY_ORDER)), c='blue', alpha=0.1+0.9*i/len(solns), linewidth=1.0)
+    # # derivatives
+    # axs[1].plot(ws, sum(i*qx[i]*ws**(i-1) for i in range(1,POLY_ORDER)), c='red', alpha=0.1+0.9*i/len(solns), linewidth=1.0)
+    # axs[1].plot(ws, sum(i*qy[i]*ws**(i-1) for i in range(1,POLY_ORDER)), c='green', alpha=0.1+0.9*i/len(solns), linewidth=1.0)
+    # axs[1].plot(ws, sum(i*qz[i]*ws**(i-1) for i in range(1,POLY_ORDER)), c='blue', alpha=0.1+0.9*i/len(solns), linewidth=1.0)
     
-    plt.show()
+    # plt.show()
 
-    lams = np.array(lams)        
+    # lams = np.array(lams)        
 
-    plt.plot(np.rad2deg(thetas), dE_dthetas)
-    # plt.plot(np.rad2deg(thetas), dE_dthetas_numeric, '--')
-    plt.plot(np.rad2deg(thetas), Es)
-    plt.plot(np.rad2deg(thetas), lams[:,0])
-    plt.plot(np.rad2deg(thetas), lams[:,1])
+    # plt.plot(np.rad2deg(thetas), dE_dthetas)
+    # # plt.plot(np.rad2deg(thetas), dE_dthetas_numeric, '--')
+    # plt.plot(np.rad2deg(thetas), Es)
+    # plt.plot(np.rad2deg(thetas), lams[:,0])
+    # plt.plot(np.rad2deg(thetas), lams[:,1])
 
-    plt.legend(["dE/dtheta", "E", "lam0", "lam1"])
-    plt.xlim([-50, -30])
-    # plt.ylim([-5000, 5000])
-    plt.show()
+    # plt.legend(["dE/dtheta", "E", "lam0", "lam1"])
+    # plt.xlim([-50, -30])
+    # # plt.ylim([-5000, 5000])
+    # plt.show()
 
-    lams /= 1000
-    dg_dthetas = np.array(dg_dthetas)
-    plt.plot(lams[:,0], lams[:,1])
-    plt.plot(dg_dthetas[:,0], dg_dthetas[:,1])
-    plt.legend(["lam", "dg/dtheta"])
-    plt.show()
+    # lams /= 1000
+    # dg_dthetas = np.array(dg_dthetas)
+    # plt.plot(lams[:,0], lams[:,1])
+    # plt.plot(dg_dthetas[:,0], dg_dthetas[:,1])
+    # plt.legend(["lam", "dg/dtheta"])
+    # plt.show()
 
 
+    # vis = o3d.visualization.Visualizer()
+    # vis.create_window()
+
+
+    # dE_dthetas = []
+    # thetas = []
+
+    # last_E = None
+    # last_theta = None
+
+    # for theta, beam_problem, soln in solns:
+    #     print("theta", np.rad2deg(theta))
+
+    #     dg_dw = beam_problem['constraint_jac'](soln)
+    #     _, dE_dw = beam_problem['objective'](soln)
+    #     dg_dtheta = beam_problem['dconstraint_dtheta'](soln)
+
+    #     lam = sp.linalg.solve(dg_dw @ dg_dw.T, dg_dw @ dE_dw.T)
+    #     dE_dtheta = (-lam.T @ dg_dtheta).item()
+    #     dE_dthetas.append(dE_dtheta)
+    #     thetas.append(theta)
+
+    #     print("dE_dtheta", dE_dtheta)
+
+    #     E, _ = beam_problem['objective'](soln)
+    #     if last_E is not None:
+    #         # print("E", E)
+    #         # print("last_E", last_E)
+    #         dE_numeric = E - last_E
+    #         dE_dtheta_numeric = dE_numeric/(theta - last_theta)
+    #         print("dE_dtheta_numeric", dE_dtheta_numeric)
+
+    #     last_E = E
+    #     last_theta = theta
         
+    #     vis.clear_geometries()
 
-    # theta = np.deg2rad(60)
-    # dtheta = 1e-4
+    #     # geometry is the point cloud used in your animaiton
+    #     for geo in get_o3d_geometries(beam_problem, soln):
+    #         vis.add_geometry(geo)
 
-    # beam_problem0 = make_beam_problem(
-    #     MAGNUS_SEGMENTS, length, alpha_x, alpha_y, alpha_z, initial_frame @ se3_exp(np.array([theta, 0, 0, 0, 0, 0]).reshape((-1,1))))
-    # soln0 = solve_beam_problem(beam_problem0, soln).x
+    #     # now modify the points of your geometry
+    #     # you can use whatever method suits you best, this is just an example
+    #     vis.poll_events()
+    #     vis.update_renderer()
 
-    # beam_problem1 = make_beam_problem(
-    #     MAGNUS_SEGMENTS, length, alpha_x, alpha_y, alpha_z, initial_frame @ se3_exp(np.array([theta + dtheta, 0, 0, 0, 0, 0]).reshape((-1,1))))
+    #     # plot first solution
+    #     ws = np.linspace(0, length, 100)
+    #     cs = soln
+    #     qx = cs[:POLY_ORDER]
+    #     qy = cs[POLY_ORDER:2*POLY_ORDER]
+    #     qz = cs[-POLY_ORDER:]
 
-    # c0 = beam_problem0['constraint'](soln0)
-    # c1 = beam_problem1['constraint'](soln0)
+    #     plt.title(f"Theta={np.rad2deg(theta)}")
 
-    # endpoint0 = beam_problem0['get_final_frame'](tuple(soln0))
-    # endpoint1 = beam_problem1['get_final_frame'](tuple(soln0))
-
-    # print("endpoint0\n", endpoint0)
-    # print("endpoint1\n", endpoint1)
-
-    # dendpoint_dtheta = get_dendpoint_dtheta(endpoint0)
-
-    # dendpoint_dtheta_expected = (endpoint0 @ se3_exp(get_dendpoint_dtheta(SE3_inv(initial_frame) @ endpoint0) * dtheta) - endpoint0)/dtheta
-    # dendpoint_dtheta_expected = (endpoint0 @ se3_to_matrix(get_dendpoint_dtheta(SE3_inv(initial_frame) @ endpoint0)))
-    # dendpoint_dtheta_actual = (endpoint1 - endpoint0)/dtheta
-
-    # print("move\n", dendpoint_dtheta_actual)
-    # print("expected\n", dendpoint_dtheta_expected)
-
-    # dconstraint_dtheta = (c1 - c0)/dtheta
-    # dconstraint_dtheta_analytic = beam_problem0['dconstraint_dtheta'](soln0)
-    # print("dconstraint_dtheta", dconstraint_dtheta)
-    # print("dconstraint_dtheta analytic", dconstraint_dtheta_analytic)
-    # print("ratio", dconstraint_dtheta / dconstraint_dtheta_analytic)
-
-    # soln1 = solve_beam_problem(beam_problem1, soln0).x
-    # dw = (soln1 - soln0).reshape((-1,1))
-    # dconstraint_dw = beam_problem0['constraint_jac'](soln0)
-
-    # print("dconstraint_dw", dconstraint_dw)
-    # print("dw/dtheta", dw.T/dtheta)
-    # print("dcons/dw * dw/dtheta", (dconstraint_dw @ dw/dtheta).T)
-    # print("dcons/dtheta", dconstraint_dtheta)
-
-    # Let g: R^n -> R^2 be the constraint function
-    # Let w_eq(theta) be the equilibrium parameters, given boundary condition theta
-    # 
-    # dg/dw * dw_eq + dg/dtheta dtheta = 0 (w_eq must remain on constraint manifold as theta changes)
-    # dg/dw * w_eq' = -dg/dtheta
-    #
-    # At optimality we have the lagrange condition
-    # lam^T dg/dw = dE/dw. Then
-    # 
-    # lam^T dg/dw * w_eq'= -lam^T dg/dtheta
-    # dE/dw * w_eq' = -lam^T dg/dtheta
-    # dE/dtheta_eq = -lam^T dg/dtheta
-    #
-    # This is units of torque. When positive, it takes work
-    # to move to an adjacent equilibrium point.
-    # When >= 0, it takes no work to move the equilibrium.
-    #
-    # To solve for lam, we write
-    # dg/dw^T lam = dE/dw^T
-    # dg/dw dg/dw^T lam = dg/dw dE/dw^T
-    # lam = (dg/dw dg/dw^T)^{-1} dg/dw dE/dw^T
-    #
-
-    vis = o3d.visualization.Visualizer()
-    vis.create_window()
-
-
-
-    dE_dthetas = []
-    thetas = []
-
-    last_E = None
-    last_theta = None
-
-    for theta, beam_problem, soln in solns:
-        print("theta", np.rad2deg(theta))
-
-        dg_dw = beam_problem['constraint_jac'](soln)
-        _, dE_dw = beam_problem['objective'](soln)
-        dg_dtheta = beam_problem['dconstraint_dtheta'](soln)
-
-        lam = sp.linalg.solve(dg_dw @ dg_dw.T, dg_dw @ dE_dw.T)
-        dE_dtheta = (-lam.T @ dg_dtheta).item()
-        dE_dthetas.append(dE_dtheta)
-        thetas.append(theta)
-
-        print("dE_dtheta", dE_dtheta)
-
-        E, _ = beam_problem['objective'](soln)
-        if last_E is not None:
-            # print("E", E)
-            # print("last_E", last_E)
-            dE_numeric = E - last_E
-            dE_dtheta_numeric = dE_numeric/(theta - last_theta)
-            print("dE_dtheta_numeric", dE_dtheta_numeric)
-
-        last_E = E
-        last_theta = theta
-        
-        vis.clear_geometries()
-
-        # geometry is the point cloud used in your animaiton
-        for geo in get_o3d_geometries(beam_problem, soln):
-            vis.add_geometry(geo)
-
-        # now modify the points of your geometry
-        # you can use whatever method suits you best, this is just an example
-        vis.poll_events()
-        vis.update_renderer()
-
-        # plot first solution
-        ws = np.linspace(0, length, 100)
-        cs = soln
-        qx = cs[:POLY_ORDER]
-        qy = cs[POLY_ORDER:2*POLY_ORDER]
-        qz = cs[-POLY_ORDER:]
-
-        plt.title(f"Theta={np.rad2deg(theta)}")
-
-        plt.plot(ws, sum(qx[i]*ws**i for i in range(POLY_ORDER)), c='red')
-        plt.plot(ws, sum(qy[i]*ws**i for i in range(POLY_ORDER)), c='green')
-        plt.plot(ws, sum(qz[i]*ws**i for i in range(POLY_ORDER)), c='blue')
-        plt.legend(["x", "y", "z"])
-        plt.show()
+    #     plt.plot(ws, sum(qx[i]*ws**i for i in range(POLY_ORDER)), c='red')
+    #     plt.plot(ws, sum(qy[i]*ws**i for i in range(POLY_ORDER)), c='green')
+    #     plt.plot(ws, sum(qz[i]*ws**i for i in range(POLY_ORDER)), c='blue')
+    #     plt.legend(["x", "y", "z"])
+    #     plt.show()
 
 

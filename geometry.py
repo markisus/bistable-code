@@ -32,9 +32,10 @@ import math
 kTol = 1e-8
 
 def so3_to_matrix(so3):
-    wx = so3[0,0]
-    wy = so3[1,0]
-    wz = so3[2,0]
+    so3 = so3.flatten()
+    wx = so3[0]
+    wy = so3[1]
+    wz = so3[2]
     so3_matrix = np.array([
         [0, -wz, wy],
         [wz, 0, -wx],
@@ -46,9 +47,10 @@ def so3_to_vector(so3):
     return np.array([[so3[2,1], so3[0,2], so3[1,0]]]).T
 
 def se3_to_matrix(se3):
+    se3 = se3.flatten()
     result = np.empty((4,4))
-    result[:3,:3] = so3_to_matrix(se3[:3,:])
-    result[:3,3] = se3[3:,0]
+    result[:3,:3] = so3_to_matrix(se3[:3])
+    result[:3,3] = se3[3:]
     result[3,:] = 0
     return result
 
@@ -392,6 +394,18 @@ def SE3_times(SE3):
         [       0,        0,        0, R[1, 0], R[1, 1], R[1, 2]],
         [       0,        0,        0, R[2, 0], R[2, 1], R[2, 2]]
     ])
+
+def se3_mult(se3a, se3b):
+    "Returns se3_to_vector(se3_to_matrix(se3a) @ se3_to_matrix(se3b))"
+    w_xa, w_ya, w_za, p_xa, p_ya, p_za = se3a.flatten()
+    w_xb, w_yb, w_zb, p_xb, p_yb, p_zb = se3b.flatten()
+    return np.array([
+        w_ya*w_zb,
+        w_xb*w_za,
+        w_xa*w_yb,
+        -p_yb*w_za + p_zb*w_ya,
+        p_xb*w_za - p_zb*w_xa,
+        -p_xb*w_ya + p_yb*w_xa]).reshape((-1,1))
 
 def dse3_left_jacobian(se3):
     # Returns 6x6x6 tensor
@@ -759,25 +773,33 @@ def dse3_left_jacobian(se3):
 
 if __name__ == "__main__":
     # T = se3_exp(np.random.uniform(-10, 10, (6,1)))
+
+    w = np.random.uniform(-1, 1, (6,1))
+    v = np.random.uniform(-1, 1, (6,1))
+
+    A = se3_mult(v, w)
+    B = se3_to_vector(se3_to_matrix(v) @ se3_to_matrix(w))
+    print("A", A)
+    print("B", B)
     
-    w = np.random.uniform(-10, 10, (6,1))
-    v = np.random.uniform(-10, 10, (6,1))
-    epsilon = 1e-6
-    lj = se3_left_jacobian(w)
-    lj_plus = se3_left_jacobian(w + epsilon*v)
+    # w = np.random.uniform(-10, 10, (6,1))
+    # v = np.random.uniform(-10, 10, (6,1))
+    # epsilon = 1e-6
+    # lj = se3_left_jacobian(w)
+    # lj_plus = se3_left_jacobian(w + epsilon*v)
 
-    dlj = dse3_left_jacobian(w)
-    print("dlj.shape", dlj.shape)
+    # dlj = dse3_left_jacobian(w)
+    # print("dlj.shape", dlj.shape)
 
-    deriv_analytic = np.zeros((6,6))
-    for i in range(6):
-        deriv_analytic += dlj[:,:,i] * v[i,0]
+    # deriv_analytic = np.zeros((6,6))
+    # for i in range(6):
+    #     deriv_analytic += dlj[:,:,i] * v[i,0]
 
-    deriv_numeric = (lj_plus - lj)/epsilon
-    # deriv_analytic = dSE3_adj_dse3(T, w)
-    print("Numeric", deriv_numeric)
-    print("Analytic", deriv_analytic)
-    print("Diff", np.max(np.abs(deriv_numeric - deriv_analytic)))
+    # deriv_numeric = (lj_plus - lj)/epsilon
+    # # deriv_analytic = dSE3_adj_dse3(T, w)
+    # print("Numeric", deriv_numeric)
+    # print("Analytic", deriv_analytic)
+    # print("Diff", np.max(np.abs(deriv_numeric - deriv_analytic)))
     
 
     # epsilon = 1e-6
