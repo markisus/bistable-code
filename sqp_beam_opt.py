@@ -176,59 +176,17 @@ def subdivide_frames(magnus_segments, length, initial_frame, qs, delta_l):
         current_l = next_l
 
 def F(magnus_segments, length, alpha_x, alpha_y, alpha_z, initial_frame, theta, qs, lambd):
+    sanity_check = False
+    
     psis, dpsi_dqs = get_psi_segments(length, qs, magnus_segments)
     endpoint, dendpoint_dq, d2endpoint_dq2 = get_endpoint(psis, dpsi_dqs, compute_hess = True)
 
-    eps = 1e-6
-    dqs = np.random.uniform(-1, 1, 3*POLY_ORDER)
-    psis_plus, dpsi_dqs_plus = get_psi_segments(length, qs + dqs*eps, magnus_segments)
-    endpoint_plus, dendpoint_dq_plus = get_endpoint(psis_plus, dpsi_dqs_plus, compute_hess = False)
-
-    # # ##### SANITY
-
-    # def get(dqs):
-    #     psis, dpsi_dqs = get_psi_segments(length, qs + dqs, magnus_segments)
-    #     endpoint, dendpoint_dq = get_endpoint(psis, dpsi_dqs, compute_hess = False)
-    #     return endpoint, dendpoint_dq
-
-    # # psis_plus, dpsi_dqs_plus = get_psi_segments(length, qs + dqs*eps, magnus_segments)
-    # # psis_plus_half, dpsi_dqs_plus_half = get_psi_segments(length, qs + dqs*eps/2, magnus_segments)
-    # # psis_minus, dpsi_dqs_minus = get_psi_segments(length, qs - dqs*eps, magnus_segments)
-    # # psis_minus_half, dpsi_dqs_minus_half = get_psi_segments(length, qs - dqs*eps/2, magnus_segments)
-
-    # endpoint, dendpoint_dq = get(dqs*0)
-    # endpoint_plus, dendpoint_dq_plus = get(dqs*eps)
-    # endpoint_minus, dendpoint_dq_minus = get(-dqs*eps)
-    
-    # # analytic first derivatives, numeric second derivatives
-    # dendpoint_dt_plus = endpoint_plus@se3_to_matrix(dendpoint_dq_plus@dqs.reshape((-1,1)))
-    # dendpoint_dt = endpoint@se3_to_matrix(dendpoint_dq@dqs.reshape((-1,1)))
-    # d2endpoint_dt2_n = (dendpoint_dt_plus - dendpoint_dt)/eps
-    # print("d2endpoint_dt2_n", d2endpoint_dt2_n)
-
-    # # central difference
-    # d2endpoint_dt2_cd = (endpoint_plus - 2*endpoint + endpoint_minus)/eps**2
-    # print("d2endpoint_dt2_cd", d2endpoint_dt2_cd)
-
-    # analytic second derivative
-    # T'         =   T @ M L dq
-    # T''        =   T'@ M L dq + T @ d/dt[M L dq]
-    # print("dendpoint_dq shape", dendpoint_dq.shape)
-    # print("d2endpoint_dq2 shape", d2endpoint_dq2.shape)
-    # print("dendpoint_dq(t)", dendpoint_dq)
-
-    # print("dendpoint_dq'(t) numeric", (dendpoint_dq_plus - dendpoint_dq)/eps)
-    # print("dendpoint_dq'(t) analytic", np.einsum("ijk,k", d2endpoint_dq2, dqs))
-
-    # d__dendpoint_dq__t = np.einsum("ijk,k", d2endpoint_dq2, dqs) @ dqs.reshape((-1,1))
-    # d__dendpoint_dq__t_n = (dendpoint_dq_plus@dqs.reshape((-1,1)) - dendpoint_dq@dqs.reshape((-1,1)))/eps
-    # print("d__dendpoint_dq__t", d__dendpoint_dq__t)
-    # print("d__dendpoint_dq__t_n", d__dendpoint_dq__t_n)
-    # Tprime = endpoint@se3_to_matrix(dendpoint_dq@dqs.reshape((-1,1)))
-
-    # Tprimeprime = endpoint@(se3_to_matrix(dendpoint_dq@dqs.reshape((-1,1))) @ se3_to_matrix(dendpoint_dq@dqs.reshape((-1,1))) + \
-    #                         se3_to_matrix(np.einsum("ijk,k", d2endpoint_dq2, dqs) @ dqs.reshape((-1,1))))
-
+    if sanity_check:
+        eps = 1e-6
+        dqs = np.random.uniform(-1, 1, 3*POLY_ORDER)
+        dlambd = np.random.uniform(-1,1, 2) * 0
+        psis_plus, dpsi_dqs_plus = get_psi_segments(length, qs + dqs*eps, magnus_segments)
+        endpoint_plus, dendpoint_dq_plus = get_endpoint(psis_plus, dpsi_dqs_plus, compute_hess = False)
 
     K = get_energy_matrix(length)
 
@@ -244,125 +202,124 @@ def F(magnus_segments, length, alpha_x, alpha_y, alpha_z, initial_frame, theta, 
 
     initial_frame = base_frame @ rotator
     T = initial_frame @ endpoint
-    T_plus = initial_frame @ endpoint_plus
 
     dT_dq = np.zeros((4,4,3*POLY_ORDER))
     for k in range(3*POLY_ORDER):
         dT_dq[:,:,k] = T @ se3_to_matrix(dendpoint_dq[:,k])
 
-    dT_dq_plus = np.zeros((4,4,3*POLY_ORDER))
-    for k in range(3*POLY_ORDER):
-        dT_dq_plus[:,:,k] = T_plus @ se3_to_matrix(dendpoint_dq_plus[:,k])
-
-    # print("SANITY")
-    # print("dendpoint_dt n", (endpoint_plus - endpoint)/eps)
-    # print("dendpoint_dt a", endpoint @ se3_to_matrix(dendpoint_dq @ dqs))
-    # print("dT_dt n", initial_frame @ (endpoint_plus - endpoint)/eps)
-    # print("dT_dt n alt", (T_plus - T)/eps)
-    # print("dT_dt a", T @ se3_to_matrix(dendpoint_dq @ dqs))
-    # print("dT_dt alt", np.einsum("ijk,k", dT_dq, dqs))
+    if sanity_check:
+        T_plus = initial_frame @ endpoint_plus
+        print("dT_dt n", (T_plus - T)/eps)
+        print("dT_dt a", (dT_dq @ dqs))
+        
+    if sanity_check:
+        dT_dq_plus = np.zeros((4,4,3*POLY_ORDER))
+        for k in range(3*POLY_ORDER):
+            dT_dq_plus[:,:,k] = T_plus @ se3_to_matrix(dendpoint_dq_plus[:,k])
 
     d2T_dq2 = np.zeros((4,4,3*POLY_ORDER,3*POLY_ORDER))
     for k1 in range(3*POLY_ORDER):
         for k2 in range(3*POLY_ORDER):
             d2T_dq2[:,:,k1,k2] = T @ (
-                se3_to_matrix(dendpoint_dq[:,k2].reshape((-1,1))) @ se3_to_matrix(dendpoint_dq[:,k1].reshape((-1,1))) + \
+                se3_to_matrix(dendpoint_dq[:,k1].reshape((-1,1))) @ se3_to_matrix(dendpoint_dq[:,k2].reshape((-1,1))) + \
                 se3_to_matrix(d2endpoint_dq2[:,k2,k1].reshape((-1,1))))
 
-    dT_dt_plus = dT_dq_plus @ dqs
-    # print("dT_dt_plus", dT_dt_plus)
-    dT_dt = dT_dq @ dqs
-    # print("d2T_dt2 n", (dT_dt_plus - dT_dt)/eps)
-    # print("d2T_dt2 a", (d2T_dq2 @ dqs) @ dqs)
+    if sanity_check:
+        dT_dt_plus = dT_dq_plus @ dqs
+        dT_dt = dT_dq @ dqs
 
-    # SE3_times_endpoint = SE3_times(endpoint)
-    # dendpoint_dq = SE3_times_endpoint @ dtwistendpoint_dq
-    # d2endpoint_dq2 = np.einsum("ij, jkl", SE3_times_endpoint, d2twistendpoint_dq2)
+        print("d2T_dt2 n", (dT_dt_plus - dT_dt)/eps)
+        print("d2T_dt2 a", (d2T_dq2 @ dqs) @ dqs)
 
     roll = T[1,2]
     height = T[1,3]
 
-    roll_plus = T_plus[1,2]
-    height_plus = T_plus[1,3]
-
     droll_dq = dT_dq[1,2,:]
     dheight_dq = dT_dq[1,3,:]
 
-    droll_dq_plus = dT_dq_plus[1,2,:]
-    dheight_dq_plus = dT_dq_plus[1,3,:]
-
-    # print("droll_dt a", droll_dq @ dqs)
-    # print("dheight_dt a", dheight_dq @ dqs)
-    # print("droll_dt n", (T_plus[1,2] - roll)/eps)
-    # print("dheight_dt n", (T_plus[1,3] - height)/eps)
+    if sanity_check:
+        roll_plus = T_plus[1,2]
+        print("droll_dt n", (roll_plus - roll)/eps)
+        print("droll_dt a", droll_dq @ dqs)
+        
+        height_plus = T_plus[1,3]
+        print("dheight_dt n", (height_plus - height)/eps)
+        print("dheight_dt a", dheight_dq @ dqs)
 
     d2roll_dq2 = d2T_dq2[1,2,:,:]
     d2height_dq2 = d2T_dq2[1,3,:,:]
-    # print("d2height_dq2", d2height_dq2)
 
-    # print("droll_dt_plus", droll_dq_plus @ dqs)
-    # print("dheight_dt_plus", dheight_dq_plus @ dqs)
+    if sanity_check:
+        droll_dq_plus = dT_dq_plus[1,2,:]
+        dheight_dq_plus = dT_dq_plus[1,3,:]
+        print("d2roll_dt2 n", (droll_dq_plus @ dqs - droll_dq @ dqs)/eps)
+        print("d2roll_dt2 a", (d2roll_dq2 @ dqs) @ dqs)
+        print("d2height_dt2 n", (dheight_dq_plus @ dqs - dheight_dq @ dqs)/eps)
+        print("d2height_dt2 a", (d2height_dq2 @ dqs) @ dqs)
 
-    # print("d2roll_dt2 n", (droll_dq_plus @ dqs - droll_dq @ dqs)/eps)
-    # print("d2roll_dt2 a", (d2roll_dq2 @ dqs) @ dqs)
-    # print("d2height_dt2 n", (dheight_dq_plus @ dqs - dheight_dq @ dqs)/eps)
-    # print("d2height_dt2 a", (d2height_dq2 @ dqs) @ dqs)
+        print("d[droll_dq]dt n", (droll_dq_plus - droll_dq)/eps)
+        print("d[droll_dq]dt a", ((d2roll_dq2.T @ dqs)))
 
     qxs = qs[:POLY_ORDER].reshape((-1,1))
     qys = qs[POLY_ORDER:2*POLY_ORDER].reshape((-1,1))
     qzs = qs[-POLY_ORDER:].reshape((-1,1))
 
-    dqxs = dqs[:POLY_ORDER].reshape((-1,1))
-    dqys = dqs[POLY_ORDER:2*POLY_ORDER].reshape((-1,1))
-    dqzs = dqs[-POLY_ORDER:].reshape((-1,1))
+    if sanity_check:
+        dqxs = dqs[:POLY_ORDER].reshape((-1,1))
+        dqys = dqs[POLY_ORDER:2*POLY_ORDER].reshape((-1,1))
+        dqzs = dqs[-POLY_ORDER:].reshape((-1,1))
 
     objective = alpha_x * qxs.T @ K @ qxs + \
         alpha_y * qys.T @ K @ qys  + \
         alpha_z * qzs.T @ K @ qzs
-
-    objective_plus = alpha_x * (qxs + eps*dqxs).T @ K @ (qxs + eps*dqxs) + \
-        alpha_y * (qys + eps*dqys).T @ K @ (qys + eps*dqys)  + \
-        alpha_z * (qzs + eps*dqzs).T @ K @ (qzs + eps*dqzs)
-
-    objective = objective.item()
-    objective_plus = objective_plus.item()
+    objective = objective.item()    
 
     dE_dqxs = 2*(alpha_x * qxs.T @ K).flatten()
     dE_dqys = 2*(alpha_y * qys.T @ K).flatten() 
     dE_dqzs = 2*(alpha_z * qzs.T @ K).flatten() 
     dE_dqs = np.concatenate((dE_dqxs, dE_dqys, dE_dqzs))
 
-    
+    if sanity_check:
+        objective_plus = alpha_x * (qxs + eps*dqxs).T @ K @ (qxs + eps*dqxs) + \
+            alpha_y * (qys + eps*dqys).T @ K @ (qys + eps*dqys)  + \
+            alpha_z * (qzs + eps*dqzs).T @ K @ (qzs + eps*dqzs)
+        objective_plus = objective_plus.item()
 
-    print("dE_dt numeric", (objective_plus - objective)/eps)
-    print("dE_dt a", dE_dqs @ dqs)
-
-    dE_dqxs_plus = 2*(alpha_x * (qxs+ dqxs*eps).T @ K).flatten()
-    dE_dqys_plus = 2*(alpha_y * (qys+ dqys*eps).T @ K).flatten() 
-    dE_dqzs_plus = 2*(alpha_z * (qzs+ dqzs*eps).T @ K).flatten() 
-    dE_dqs_plus = np.concatenate((dE_dqxs_plus, dE_dqys_plus, dE_dqzs_plus))
-
-    print("d2E_dt2 n", (dE_dqs_plus @ dqs - dE_dqs @ dqs)/eps)
-
+        dobjective_dt_n = (objective_plus - objective)/eps
+        print("dobjective_dt n", dobjective_dt_n)
+        print("dobjective_dt a", dE_dqs @ dqs)
 
     objective_hess = np.zeros((3*POLY_ORDER, 3*POLY_ORDER))
     objective_hess[:POLY_ORDER,:POLY_ORDER] = 2*alpha_x*K
     objective_hess[POLY_ORDER:2*POLY_ORDER,POLY_ORDER:2*POLY_ORDER] = 2*alpha_y*K
     objective_hess[-POLY_ORDER:,-POLY_ORDER:] = 2*alpha_z*K
 
-    print("d2E_dt2 a", (objective_hess @ dqs) @ dqs)
+    if sanity_check:
+        dE_dqxs_plus = 2*(alpha_x * (qxs+ dqxs*eps).T @ K).flatten()
+        dE_dqys_plus = 2*(alpha_y * (qys+ dqys*eps).T @ K).flatten() 
+        dE_dqzs_plus = 2*(alpha_z * (qzs+ dqzs*eps).T @ K).flatten() 
+        dE_dqs_plus = np.concatenate((dE_dqxs_plus, dE_dqys_plus, dE_dqzs_plus))
 
+        d2E_dt2_n = ((dE_dqs_plus @ dqs - dE_dqs @ dqs) / eps)
+        print("d2E_dt2 n", d2E_dt2_n)
+
+        d2E_dt2_a = (objective_hess @ dqs) @ dqs
+        print("d2E_dt2 a", d2E_dt2_a)
+        
     G = np.zeros((2 + 3*POLY_ORDER))
     G[0] = roll
     G[1] = height
     G[2:] = dE_dqs + droll_dq*lambd[0] + dheight_dq*lambd[1]
 
-    G_plus = np.zeros((2 + 3*POLY_ORDER))
-    G_plus[0] = roll_plus
-    G_plus[1] = height_plus
-    G_plus[2:] = dE_dqs_plus + droll_dq_plus*lambd[0] + dheight_dq_plus*lambd[1]
+    if sanity_check:
+        G_plus = np.zeros((2 + 3*POLY_ORDER))
+        G_plus[0] = roll_plus
+        G_plus[1] = height_plus
+        G_plus[2:] = dE_dqs_plus + droll_dq_plus*(lambd[0] + dlambd[0]*eps) + dheight_dq_plus*(lambd[1] + dlambd[1]*eps)
 
-    print("dG_dt n", (G_plus - G)/eps)
+        dG_dt_n = (G_plus - G)/eps
+        print("dG_dt n", dG_dt_n)
+        print("droll_dq a", d2roll_dq2 @ dqs)
 
     H = np.zeros((2 + 3*POLY_ORDER, 2 + 3*POLY_ORDER))
     H[0, :3*POLY_ORDER] = droll_dq
@@ -371,7 +328,13 @@ def F(magnus_segments, length, alpha_x, alpha_y, alpha_z, initial_frame, theta, 
     H[2:, -1] = dheight_dq.T
     H[2:,:-2] = objective_hess + d2roll_dq2 * lambd[0] + d2height_dq2 * lambd[1]
 
-    print("dG_dt a", (H @ np.concatenate((dqs, [0,0]))))
+    if sanity_check:
+        dG_dt_a = H @ np.concatenate((dqs, [dlambd[0], dlambd[1]]))
+        # dG_dt_a_nolam = (H @ np.concatenate((dqs, [0,0])))
+        print("dG_dt a", dG_dt_a)
+        print("diff", dG_dt_a - dG_dt_n)
+        print("diff rel", (dG_dt_a / dG_dt_n) - 1)
+
     return G, H
 
 def make_beam_problem(magnus_segments, length, alpha_x, alpha_y, alpha_z, initial_frame):
@@ -481,18 +444,17 @@ def solve_beam_problem(beam_problem, initial_guess):
                                 options={'maxiter':1000})
 
 
-
 if __name__ == "__main__":
-    np.random.seed(3)
-    np.set_printoptions(precision=8, suppress=False)
+    # np.random.seed(3)
+    np.set_printoptions(precision=5, suppress=True)
     
     length = 0.34
-    # soln = np.zeros(POLY_ORDER*3)
+    soln = np.zeros(POLY_ORDER*3)
     qs = np.random.uniform(-1, 1, POLY_ORDER*3) 
     dqs = np.random.uniform(-1, 1, POLY_ORDER*3) 
 
     lambd = np.random.uniform(-1, 1, 2) 
-    dlambd = np.random.uniform(-1, 1, 2) * 0
+    dlambd = np.random.uniform(-1, 1, 2) 
 
     theta = 0.0
     eps = 1e-6
@@ -500,17 +462,22 @@ if __name__ == "__main__":
     G, H = F(MAGNUS_SEGMENTS, length, alpha_x, alpha_y, alpha_z, initial_frame, theta, qs, lambd)
     G_plus, _ = F(MAGNUS_SEGMENTS, length, alpha_x, alpha_y, alpha_z, initial_frame, theta, qs + eps*dqs, lambd + eps*dlambd)
 
-    print("G", G)
-    print("G_plus", G_plus)
-    print("dG/dt n", (G_plus - G)/eps)
+    # print("G", G)
+    # print("G_plus", G_plus)
+
+    dG_dt_n = (G_plus - G)/eps
+    print("dG/dt n", dG_dt_n)
 
     daux = np.concatenate((dqs, dlambd)).reshape(-1,1)
-    dG_dt = H @ daux
-    print("dG/dt a", dG_dt.flatten())
-    print("H", H)
+    dG_dt = (H @ daux).flatten()
+    print("dG_dt a", dG_dt.flatten())
+
+    # # print("diff1", (np.abs(dG_dt_n/dG_dt - 1)))
+    print("diff", np.abs(dG_dt_n - dG_dt))
+    print("diff rel", np.max(np.abs(dG_dt_n / dG_dt) - 1))
 
 
-    # beam_problem = make_beam_problem(MAGNUS_SEGMENTS, length, alpha_x, alpha_y, alpha_z, initial_frame)
+    beam_problem = make_beam_problem(MAGNUS_SEGMENTS, length, alpha_x, alpha_y, alpha_z, initial_frame)
     # print("SVD")
     # U, S, V = sp.linalg.svd(beam_problem['objective_hess']())
     # print("S", S)
@@ -518,12 +485,12 @@ if __name__ == "__main__":
     # print("V", V.shape)
     # # print("absmax", np.max(np.abs(U.T - V)))
 
-    # soln[POLY_ORDER*2-1] = -1 # curving into +z axis
+    soln[POLY_ORDER*2-1] = -1 # curving into +z axis
 
     # solns = []
 
     # # thetas = np.concatenate([np.deg2rad(np.array([60, 30, 0, -30, -34])), np.linspace(np.deg2rad(-35), np.deg2rad(-50), 30)])
-    # thetas = np.concatenate([np.deg2rad(np.array([60, 30, 0, -25])), np.linspace(np.deg2rad(-26), np.deg2rad(-40), 30)])
+    thetas = np.concatenate([np.deg2rad(np.array([60, 30, 0, -25])), np.linspace(np.deg2rad(-26), np.deg2rad(-40), 30)])
 
     # dE_dthetas = []
     # dE_dthetas_numeric = []
@@ -535,28 +502,44 @@ if __name__ == "__main__":
     # lams = []
     # singular_values = []
 
-    # for theta in thetas:
-    #     print("Theta = ", np.rad2deg(theta), " deg")
-    #     rotator = se3_exp(np.array([theta, 0, 0, 0, 0, 0]).reshape((-1,1)))
-    #     beam_problem = make_beam_problem(MAGNUS_SEGMENTS, length, alpha_x, alpha_y, alpha_z, initial_frame @ rotator)
-    #     start = time.monotonic()
-    #     result = solve_beam_problem(beam_problem, soln)
-    #     if not result.success:
-    #         raise RuntimeError("Uh Oh!")
-    #     end = time.monotonic()
-    #     print("Optimization time", end-start)
-    #     print(result)
-    #     soln = result.x
-    #     print(soln)
-    #     print("Final constrant", beam_problem['constraint'](soln))
+    for theta in thetas:
+        print("Theta = ", np.rad2deg(theta), " deg")
+        rotator = se3_exp(np.array([theta, 0, 0, 0, 0, 0]).reshape((-1,1)))
+        beam_problem = make_beam_problem(MAGNUS_SEGMENTS, length, alpha_x, alpha_y, alpha_z, initial_frame @ rotator)
+        start = time.monotonic()
+        result = solve_beam_problem(beam_problem, soln)
+        if not result.success:
+            raise RuntimeError("Uh Oh!")
+        end = time.monotonic()
+        print("Optimization time", end-start)
+        # print(result)
+        soln = result.x
+        print(soln)
+        print("Final constrant", beam_problem['constraint'](soln))
 
-    #     dg_dw = beam_problem['constraint_jac'](soln)
-    #     _, dE_dw = beam_problem['objective'](soln)
-    #     dg_dtheta = beam_problem['dconstraint_dtheta'](soln)
-    #     dg_dthetas.append(dg_dtheta.flatten())
+        dg_dw = beam_problem['constraint_jac'](soln)
+        _, dE_dw = beam_problem['objective'](soln)
+        dg_dtheta = beam_problem['dconstraint_dtheta'](soln)
+        # dg_dthetas.append(dg_dtheta.flatten())
 
-    #     lam = sp.linalg.solve(dg_dw @ dg_dw.T, dg_dw @ dE_dw.T)
-    #     lams.append(lam.flatten())
+        lam = sp.linalg.solve(dg_dw @ dg_dw.T, dg_dw @ dE_dw.T)
+        print("lam", lam)
+
+        F_res, G_res = F(MAGNUS_SEGMENTS, length, alpha_x, alpha_y, alpha_z, initial_frame, theta, soln, -lam)
+        print(F_res)
+        print("G_res.shape", G_res.shape)
+
+        sp.linalg.inv(G_res)
+
+        G_U, G_S, G_V = sp.linalg.svd(G_res)
+        print("Lowest singular value", G_S[-1])
+
+        null = G_V[-1,:].T
+        print("G_res null", G_res @ null)
+        # can move in the null direction??
+        
+        # lams.append(lam.flatten())
+        input("CONTINUE")
 
     #     dE_dtheta = (-lam.T @ dg_dtheta).item() * -1 # minus 1 because we are going backwards
     #     dE_dthetas.append(dE_dtheta)
